@@ -205,7 +205,7 @@ const serialise_html = arrow(
 	join(''))
 
 const directories_template = arrow(
-		map(x => ['li', null, [['a', [['href', x]], [last(x.split('/'))]]]]),
+	map(x => ['li', null, [['a', [['href', x]], [last(x.split('/'))]]]]),
 	x => ['html', null, [
 		['head', null, [
 			['meta', [['name', 'viewport'], ['content', 'width=device-width, initial-scale=1.0']], null],
