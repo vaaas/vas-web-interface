@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<html xmlns='http://www.w3.org/1999/xhtml'>
+<head>
+	<meta name='viewport' content='width=device-width, initial-scale=1.0'/>
+	<title>Login</title>	
+</head>
+<body>
+	<form>
+		<input type='password' required='true'/>
+		<input type='submit' value='Login'/>
+	</form>
+	
+	<script>
+		document.querySelector('form').onsubmit = function(x)
+			{ const pass = document.querySelector('input[type="password"]').value
+			console.log(pass)
+			document.cookie = `p=${pass}`
+			location.reload() }
+	</script>
+</body>
+</html>
