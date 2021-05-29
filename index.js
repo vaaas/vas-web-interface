@@ -8,10 +8,12 @@ const stream = require('stream')
 const B = a => b => c => a(b(c))
 const B1 = a => b => c => d => a(b(c)(d))
 const C = a => b => c => a(c)(b)
+const D = a => b => c => d => e => a(b(d))(c(e))
 const K = a => () => a
 const K1 = a => b => () => a(b)
 const I = a => a
 const T = a => b => b(a)
+const W = a => b => a(b)(b)
 const N = a => b => new a(b)
 const not = a => !a
 const is = a => b => a === b
@@ -44,12 +46,13 @@ const filter = f => function* (xs) { for (const x of xs) if (f(x)) yield x }
 const join = a => b => b.join(a)
 const add = a => b => a + b
 const unshift = x => function* (xs) { yield x ; yield* xs }
+const set = k => v => tap(o => o[k] = v)
+const to_lower_case = a => a.toLowerCase()
 
-let CONF = null
+const CONF = JSON.parse(fs.readFileSync('conf.json').toString('utf8'))
 
 function main()
-	{ CONF = JSON.parse(fs.readFileSync('conf.json').toString('utf8'))
-	const serve = http.createServer(request_listener)
+	{ const serve = http.createServer(request_listener)
 	serve.listen(CONF.port, CONF.host, () =>
 		console.log('listening on port', CONF.port, 'of', CONF.host)) }
 
@@ -119,15 +122,14 @@ const route = req => {
 	}
 }
 
-const authorise = req => pipe(
-	req,
+const authorise = when(arrow(
 	pluck('cookies'),
 	pluck('p'),
-	something(is(CONF.password)),
-	ifelse(truthy)(K(req), (K1(N(Error))('unauthorised'))))
+	isnt(CONF.password)))
+	(K1(N(Error))('unauthorised'))
 
-const parse_cookies = tap(req => req.cookies = pipe(
-	req.headers,
+const parse_cookies_helper = arrow(
+	pluck('headers'),
 	pluck('cookie'),
 	maybe(
 		arrow(
@@ -135,7 +137,9 @@ const parse_cookies = tap(req => req.cookies = pipe(
 			split(';'),
 			map(arrow(trim, split('='))),
 			Object.fromEntries),
-		K([]))))
+		K([])))
+
+const parse_cookies = W(D(set('cookies'))(parse_cookies_helper)(I))
 
 const parse_url = tap(req =>
 	{ let pathname = ''
@@ -144,15 +148,23 @@ const parse_url = tap(req =>
 		else pathname += c }
 	req.pathname = decodeURIComponent(pathname) })
 
-const MIMES = {
-	xhtml: 'application/xhtml+xml',
+const MIMES =
+	{ xhtml: 'application/xhtml+xml',
 	html: 'text/html',
 	js: 'text/javascript',
 	css: 'text/css',
-}
+	jpg: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	png: 'image/png',
+	gif: 'image/gif',
+	mp4: 'video/mp4',
+	webm: 'video/webm',
+	mkv: 'video/x-matroska' }
+
 const determine_mime_type = arrow(
 	split('.'),
 	last,
+	to_lower_case,
 	pluck,
 	T(MIMES),
 	nothing(K('application/octet-stream')))
@@ -197,6 +209,7 @@ const directories_template = arrow(
 	x => ['html', null, [
 		['head', null, [
 			['meta', [['name', 'viewport'], ['content', 'width=device-width, initial-scale=1.0']], null],
+			['meta', [['charset', 'utf-8']], null],
 			['style', null, [ stylesheet ]],
 		]],
 		['body', null, [['ul', null, [...x]]]]
