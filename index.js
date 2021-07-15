@@ -1,105 +1,61 @@
-"use strict"
+'use strict'
+
+class HttpError extends Error
+    { constructor(message, status)
+        { super(message)
+        this.message = message
+        this.status = status }}
 
 const fs = require('fs')
 const path = require('path')
 const http = require('http')
 const stream = require('stream')
 
-const B = a => b => c => a(b(c))
-const B1 = a => b => c => d => a(b(c)(d))
-const C = a => b => c => a(c)(b)
-const D = a => b => c => d => e => a(b(d))(c(e))
-const K = a => () => a
-const K1 = a => b => () => a(b)
-const I = a => a
-const T = a => b => b(a)
-const W = a => b => a(b)(b)
-const N = a => b => new a(b)
-const not = a => !a
-const is = a => b => a === b
-const isnt = B1(not)(is)
-const truthy = Boolean
-const falsy = B(not)(Boolean)
-const instance = a => b => b instanceof a
-const ifelse = a => (b,c) => d => a(d) ? b(d) : c(d)
-const when = a => b => c => a(c) ? b(c) : c
-const pipe = (x, ...fs) => { for (const f of fs) x = f(x) ; return x }
-const arrow = (...fs) => x => pipe(x, ...fs)
-const either = ifelse(B1(not)(instance)(Error))
-const success = when(B1(not)(instance)(Error))
-const failure = when(instance(Error))
-const attempt = f => { try { return f() } catch (e) { return e }}
-const pluck = a => b => b[a]
-const tap = f => x => { f(x) ; return x }
-const log = tap(console.log)
-const first = pluck(0)
-const last = x => x[x.length-1]
-const null_undefined = x => x === null || x === undefined
-const defined = B(not)(null_undefined)
-const maybe = ifelse(defined)
-const something = when(defined)
-const nothing = when(null_undefined)
-const split = a => b => b.split(a)
-const trim = a => a.trim()
-const map = f => function* (xs) { for (const x of xs) yield f(x) }
-const filter = f => function* (xs) { for (const x of xs) if (f(x)) yield x }
-const join = a => b => b.join(a)
-const add = a => b => a + b
-const unshift = x => function* (xs) { yield x ; yield* xs }
-const set = k => v => tap(o => o[k] = v)
-const to_lower_case = a => a.toLowerCase()
-
 const CONF = JSON.parse(fs.readFileSync('conf.json').toString('utf8'))
+
+const last = x => x[x.length-1]
 
 function main()
 	{ const serve = http.createServer(request_listener)
 	serve.listen(CONF.port, CONF.host, () =>
 		console.log('listening on port', CONF.port, 'of', CONF.host)) }
 
-const request_listener = (req, res) =>
-	pipe(req,
-	parse_cookies,
-	authorise,
-	either(
-		arrow(parse_url, route, f => f(req, res)),
-		K1(static_file)('./login_form.xhtml')),
-	either(
-		serve(res),
-		handle_error(res)))
+function request_listener(req, socket)
+    { let response = null
+    try
+        { parse_cookies(req)
+        authorise(req)
+        parse_url(req)
+        response = route(req) }
+    catch (e) { response = handle_error(e) }
+    serve(socket, response) }
 
-const static_file_or_dir = f => pipe(
-	f,
-	K1(fs.statSync),
-	attempt,
-	success(
-		ifelse(x => x.isDirectory())
-			(K1(static_directory)(f), K1(static_file)(f))))
+function static_file_or_dir(f)
+    { const stat = fs.statSync(f)
+    if (stat.isDirectory())
+        return static_directory(f)
+    else
+        return static_file(f) }
 
-const static_file = f => pipe(
-	f,
-	K1(fs.createReadStream),
-	attempt,
-	success(x => ({
-		data: x,
-		mimetype: determine_mime_type(f),
-		status: 200,
-		headers: [],
-	})))
+function static_file(f)
+    { return {
+        data: fs.createReadStream(f),
+        mimetype: determine_mime_type(f),
+        status: 200,
+        headers: [],
+    }}
 
-const static_directory = f => pipe(f,
-	K1(fs.readdirSync),
-	attempt,
-	success(arrow(
-		filter(arrow(first, isnt('.'))),
-		map(x => path.join(f, x)),
-		unshift('..'),
-		directories_template,
-		x => ({
-			data: x,
-			mimetype: 'text/html',
-			status: 200,
-			headers: []
-		}))))
+function static_directory(f)
+    { const listing = fs.readdirSync(f)
+        .filter(x => x[0] !== '.')
+        .map(x => path.join(f, x))
+    listing.unshift('..')
+    return {
+        data: directories_template(listing),
+        mimetype: 'text/html',
+        status: 200,
+        headers: [],
+    }}
 
 const stylesheet = `
 body
@@ -109,44 +65,39 @@ body
 li + li { margin-top: 0.5em; }
 `.trim()
 
-const error = code => x => ({ data: x, status: code, mimetype: 'text/plain', headers: [] })
-const handle_error = res => arrow(pluck('message'), error(500), serve(res))
+function handle_error(e)
+    { if (e.status === 401)
+        return static_file('./login_form.xhtml')
+    else return {
+        data: e.message,
+        status: e.status || 500,
+        mimetype: 'text/plain',
+        headers: []
+    }}
 
-const route = req => {
-	switch (req.method) {
-		case 'GET':
-			return K1(static_file_or_dir)(req.pathname)
+function route(req)
+	{ switch (req.method)
+		{ case 'GET': return static_file_or_dir(req.pathname)
 		case 'POST':
-		default:
-			return K1(N(Error))('method not allowed')
-	}
-}
+		default: throw new HttpError('Method not allowed', 405) }}
 
-const authorise = when(arrow(
-	pluck('cookies'),
-	pluck('p'),
-	isnt(CONF.password)))
-	(K1(N(Error))('unauthorised'))
+function authorise(req)
+    { if (req.cookies.p !== CONF.password)
+        throw new HttpError('Unauthorised', 401) }
 
-const parse_cookies_helper = arrow(
-	pluck('headers'),
-	pluck('cookie'),
-	maybe(
-		arrow(
-			trim,
-			split(';'),
-			map(arrow(trim, split('='))),
-			Object.fromEntries),
-		K([])))
+function parse_cookies(req)
+    { const cookie = req.headers.cookie
+    if (cookie)
+        req.cookies = Object.fromEntries(cookie.trim().split(';').map(x => x.trim().split('=')))
+    else
+        req.cookies = [] }
 
-const parse_cookies = W(D(set('cookies'))(parse_cookies_helper)(I))
-
-const parse_url = tap(req =>
+function parse_url(req)
 	{ let pathname = ''
 	for (const c of req.url)
 		{ if (c === '?' || c === '#') break
 		else pathname += c }
-	req.pathname = decodeURIComponent(pathname) })
+	req.pathname = decodeURIComponent(pathname) }
 
 const MIMES =
 	{ xhtml: 'application/xhtml+xml',
@@ -161,15 +112,10 @@ const MIMES =
 	webm: 'video/webm',
 	mkv: 'video/x-matroska' }
 
-const determine_mime_type = arrow(
-	split('.'),
-	last,
-	to_lower_case,
-	pluck,
-	T(MIMES),
-	nothing(K('application/octet-stream')))
+function determine_mime_type(x)
+    { return MIMES[last(x.split('.')).toLowerCase()] || 'application/octet-stream' }
 
-const serve = socket => response =>
+function serve(socket, response)
 	{ response.headers.push(['Content-Type', response.mimetype])
 	socket.writeHead(response.status, response.headers)
 	if (response.data instanceof stream)
@@ -177,44 +123,39 @@ const serve = socket => response =>
 	else
 		socket.end(response.data) }
 
-const serialise_html = arrow(
-	function* (elem) {
-		yield '<'
-		yield elem[0]
-		if (elem[1] !== null)
-			for (const [k,v] of elem[1]) {
-				yield ' '
-				yield k
-				yield '='
-				yield '"'
-				yield v
-				yield '"'
-			}
-		if (elem[2] === null) yield '/>'
-		else {
-			yield '>'
-			for (const x of elem[2])
-				if (typeof x === 'string') yield x
-				else yield serialise_html(x)
-			yield '</'
-			yield elem[0]
-			yield '>'
-		}
-	},
-	Array.from,
-	join(''))
+function serialise_html(elem)
+    { const xs = []
+    xs.push('<')
+    xs.push(elem[0])
+    if (elem[1] !== null)
+        for (const [k,v] of elem[1])
+            { xs.push(' ')
+            xs.push(k)
+            xs.push('=')
+            xs.push('"')
+            xs.push(v)
+            xs.push('"') }
+    if (elem[2] === null) xs.push('/>')
+    else
+        { xs.push('>')
+        for (const x of elem[2])
+            if (typeof x === 'string') xs.push(x)
+            else xs.push(serialise_html(x))
+        xs.push('</')
+        xs.push(elem[0])
+        xs.push('>') }
+    return xs.join('') }
 
-const directories_template = arrow(
-	map(x => ['li', null, [['a', [['href', x]], [last(x.split('/'))]]]]),
-	x => ['html', null, [
+function directories_template(xs)
+    { let tree = xs.map(x => ['li', null, [['a', [['href', x]], [last(x.split('/'))]]]])
+    tree = ['html', null, [
 		['head', null, [
 			['meta', [['name', 'viewport'], ['content', 'width=device-width, initial-scale=1.0']], null],
 			['meta', [['charset', 'utf-8']], null],
 			['style', null, [ stylesheet ]],
 		]],
-		['body', null, [['ul', null, [...x]]]]
-	]],
-	serialise_html,
-	add('<!DOCTYPE html>'))
+		['body', null, [['ul', null, tree]]],
+    ]]
+    return '<!DOCTYPE html>' + serialise_html(tree) }
 
 main()
