@@ -24,7 +24,7 @@ const read_post_data = require('read-post-data')
 const serialise_html = require('serialise-html')
 const parse_cookies = require('parse-cookies')
 
-const CONF = JSON.parse(fs.readFileSync('conf.json').toString('utf8'))
+const CONF = JSON.parse(fs.readFileSync(__dirname + '/conf.json').toString('utf8'))
 
 const last = x => x[x.length-1]
 
@@ -65,7 +65,7 @@ li + li { margin-top: 0.5em; }
 
 function handle_error(e)
 	{ if (e.status === 401)
-		return static_file('./login_form.xhtml')
+		return static_file(__dirname + '/login_form.xhtml')
 	else return {
 		data: e.message,
 		status: e.status || 500,
