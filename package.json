@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "determine-mime-type": "github:vaaas/determine-mime-type",
+    "parse-cookies": "github:vaaas/parse-cookies",
+    "parse-url": "github:vaaas/parse-url",
+    "read-post-data": "github:vaaas/read-post-data",
+    "serialise-html": "github:vaaas/serialise-html"
+  }
+}
