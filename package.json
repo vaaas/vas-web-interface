@@ -1,6 +1,7 @@
 {
   "dependencies": {
-    "determine-mime-type": "github:vaaas/determine-mime-type",
+    "get-file": "github:vaaas/get-file",
+    "error-responses": "git+https://github.com/vaaas/error-responses.git",
     "parse-cookies": "github:vaaas/parse-cookies",
     "parse-url": "github:vaaas/parse-url",
     "read-post-data": "github:vaaas/read-post-data",
