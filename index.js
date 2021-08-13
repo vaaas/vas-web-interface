@@ -11,21 +11,48 @@ const get_file = require('get-file')
 
 const CONF = JSON.parse(fs.readFileSync(__dirname + '/conf.json').toString('utf8'))
 
-module.exports = async function request_listener(req)
-{	const auth = authorise(parse_cookies(req))
-	return auth === true ? route(parse_url(req)) : auth }
+module.exports = async (x) => route(parse_url(parse_cookies(x)))
 
-function static_file_or_dir(f)
-{	try
-	{ const stat = fs.statSync(f)
-		if (stat.isDirectory())
-			return static_directory(f)
-		else
-			return get_file(f) }
-	catch(e) { return error_responses.not_found }}
+const LOGIN_FORM = () => get_file(__dirname + '/login_form.xhtml')
 
-function static_directory(f)
-{	const listing = fs.readdirSync(f)
+const authorise = f => req => req.cookies.p === CONF.password ? f(req) : LOGIN_FORM()
+
+const user_function = authorise(req => read_post_data(req).then(x => ({
+	status: 200,
+	mimetype: 'application/json',
+	headers: [],
+	data: JSON.stringify(eval(x.toString()))
+})))
+
+async function login(req) {
+	const data = (await read_post_data(req)).toString()
+	if (data === 'p=' + CONF.password)
+		return {
+			status: 303,
+			headers: [
+				[ 'set-cookie', 'p=' + CONF.password ],
+				[ 'Location', req.headers.referer ?? '/' ],
+			],
+			data: 'Login successful',
+			mimetype: 'text/plain',
+		}
+	else return LOGIN_FORM()
+}
+
+const static_file_or_dir = authorise(
+	function static_file_or_dir(req) {
+		const f = req.pathname
+		try {
+			const stat = fs.statSync(f)
+			if (stat.isDirectory())
+				return static_directory(f)
+			else
+				return get_file(f)
+		} catch(e) { return error_responses.not_found }
+	})
+
+function static_directory(f) {
+	const listing = fs.readdirSync(f)
 		.filter(x => x[0] !== '.')
 		.map(x => path.join(f, x))
 	listing.unshift('..')
@@ -33,7 +60,9 @@ function static_directory(f)
 		data: directories_template(listing),
 		mimetype: 'text/html',
 		status: 200,
-		headers: [], }}
+		headers: [],
+	}
+}
 
 const stylesheet = `
 body
@@ -43,16 +72,23 @@ body
 li + li { margin-top: 0.5em; }
 `.trim()
 
-function route(req)
-{ switch (req.method)
-	{	case 'GET': return static_file_or_dir(req.pathname)
-		case 'POST': return user_function(req)
-		default: return error_responses.method_not_allowed }}
+function route(req) {
+	switch (req.method) {
+		case 'GET':
+			return static_file_or_dir(req)
+		case 'POST':
+			switch(req.pathname) {
+				case '/': return user_function(req)
+				case '/login': return login(req)
+				default: return error_responses.not_found
+			}
+		default:
+			return error_responses.method_not_allowed
+	}
+}
 
-const authorise = req => req.cookies.p === CONF.password ? true : get_file(__dirname + '/login_form.xhtml')
-
-function directories_template(xs)
-{	let tree = xs.map(x => ['li', null, [['a', [['href', x]], [last(x.split('/'))]]]])
+function directories_template(xs) {
+	let tree = xs.map(x => ['li', null, [['a', [['href', x]], [last(x.split('/'))]]]])
 	tree =
 		['html', null, [
 			['head', null, [
@@ -62,20 +98,17 @@ function directories_template(xs)
 			]],
 			['body', null, [['ul', null, tree]]],
 		]]
-	return '<!DOCTYPE html>' + serialise_html(tree) }
+	return '<!DOCTYPE html>' + serialise_html(tree)
+}
 
-const user_function = req => read_post_data(req).then(x =>
-	({	status: 200,
-		mimetype: 'application/json',
-		headers: [],
-		data: JSON.stringify(eval(x.toString())) }))
-
-function* walk_directory(dir)
-{	for (const name of fs.readdirSync(dir))
-	{	if (name[0] === '.') continue
+function* walk_directory(dir) {
+	for (const name of fs.readdirSync(dir)) {
+		if (name[0] === '.') continue
 		const pathname = path.join(dir, name)
 		const stats = fs.statSync(pathname)
 		if (stats.isDirectory()) yield* walk_directory(pathname)
-		else if (stats.isFile()) yield pathname }}
+		else if (stats.isFile()) yield pathname
+	}
+}
 
 const last = x => x[x.length-1]

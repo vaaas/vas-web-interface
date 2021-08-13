@@ -1,7 +1,7 @@
 {
   "dependencies": {
-    "get-file": "github:vaaas/get-file",
     "error-responses": "git+https://github.com/vaaas/error-responses.git",
+    "get-file": "github:vaaas/get-file",
     "parse-cookies": "github:vaaas/parse-cookies",
     "parse-url": "github:vaaas/parse-url",
     "read-post-data": "github:vaaas/read-post-data",
