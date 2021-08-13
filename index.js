@@ -39,17 +39,16 @@ async function login(req) {
 	else return LOGIN_FORM()
 }
 
-const static_file_or_dir = authorise(
-	function static_file_or_dir(req) {
-		const f = req.pathname
-		try {
-			const stat = fs.statSync(f)
-			if (stat.isDirectory())
-				return static_directory(f)
-			else
-				return get_file(f)
-		} catch(e) { return error_responses.not_found }
-	})
+const static_file_or_dir = authorise(req => {
+	const f = req.pathname
+	try {
+		const stat = fs.statSync(f)
+		if (stat.isDirectory())
+			return static_directory(f)
+		else
+			return get_file(f)
+	} catch(e) { return error_responses.not_found }
+})
 
 function static_directory(f) {
 	const listing = fs.readdirSync(f)
