@@ -74,6 +74,18 @@ const static_file_or_dir = authorise(req => {
 	} catch(e) { return error_responses.not_found }
 })
 
+const upload_static_file = authorise(req => new Promise((yes, no) => {
+	const stream = fs.createWriteStream(req.pathname)
+	stream.on('error', no)
+	stream.on('close', () => yes({
+		status: 201,
+		data: 'Wrote ' + req.pathname,
+		mimetype: 'text/plain',
+		headers: [],
+	}))
+	req.pipe(stream)
+}))
+
 function static_directory(f) {
 	const listing = fs.readdirSync(f)
 		.filter(x => x[0] !== '.')
@@ -98,6 +110,8 @@ function route(req) {
 				case '/define': return define_functions(req)
 				default: return defined_function(req)
 			}
+		case 'PUT':
+			return upload_static_file(req)
 		default:
 			return error_responses.method_not_allowed
 	}
